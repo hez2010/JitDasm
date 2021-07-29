@@ -307,40 +307,15 @@ namespace JitDasm {
 			}
 		}
 
- 		/// <summary>
-        /// Enumerates types with constructed method tables in all modules.
-        /// </summary>
-        /// <param name="heap"></param>
-        /// <returns></returns>
-        public static IEnumerable<ClrType> EnumerateTypes(this ClrHeap heap)
-        {
-            if (heap is null)
-                throw new ArgumentNullException(nameof(heap));
-
-            // The ClrHeap actually doesn't know anything about 'types' in the strictest sense, that's
-            // all tracked by the runtime.  First, grab the runtime object:
-
-            var runtime = heap.Runtime;
-
-            // Now we loop through every module and grab every constructed MethodTable
-            foreach (var module in runtime.EnumerateModules())
-            {
-                foreach ((ulong mt, int _) in  module.EnumerateTypeDefToMethodTableMap())
-                {
-                    // Now try to construct a type for mt.  This may fail if the type was only partially
-                    // loaded, dump inconsistency, and in some odd corner cases like transparent proxies:
-                    var type = runtime.GetTypeByMethodTable(mt);
-
-                    if (type != null)
-                        yield return type;
-                }
-            }
-        }
-
 		static IEnumerable<ClrType> EnumerateTypesCore(ClrModule module, bool heapSearch) {
 			var runtime = module.AppDomain.Runtime;
-			foreach (var type in runtime.Heap.EnumerateTypes())
-				yield return type;
+
+			foreach ((ulong mt, int _) in module.EnumerateTypeDefToMethodTableMap()) {
+				var type = runtime.GetTypeByMethodTable(mt);
+
+				if (type != null)
+					yield return type;
+			}
 
 			if (heapSearch) {
 				foreach (var obj in runtime.Heap.EnumerateObjects()) {
