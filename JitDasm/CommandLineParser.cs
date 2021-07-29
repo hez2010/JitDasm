@@ -290,7 +290,8 @@ namespace JitDasm {
 		static void VerifyProcess(Process process) { }
 
 		public static void ShowHelp() {
-			var exe = Path.GetFileNameWithoutExtension(Assembly.GetEntryAssembly()!.Location);
+			var module = Process.GetCurrentProcess().MainModule;
+			var exe = Path.GetFileNameWithoutExtension(module?.FileName ?? "jitdasm");
 			var msg = $@"Disassembles jitted methods in .NET processes
 
 -p, --pid <pid>                 Process id
