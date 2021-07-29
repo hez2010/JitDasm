@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -31,11 +32,11 @@ using Iced.Intel;
 namespace JitDasm {
 	[Flags]
 	enum DisassemblerOptions {
-		None				= 0,
-		Diffable			= 0x00000001,
-		ShowAddresses		= 0x00000002,
-		ShowHexBytes		= 0x00000004,
-		ShowSourceCode		= 0x00000008,
+		None = 0,
+		Diffable = 0x00000001,
+		ShowAddresses = 0x00000002,
+		ShowHexBytes = 0x00000004,
+		ShowSourceCode = 0x00000008,
 	}
 
 	sealed class Disassembler : ISymbolResolver {
@@ -202,8 +203,8 @@ namespace JitDasm {
 					ulong displ;
 					switch (instr.MemoryDisplSize) {
 					case 2:
-					case 4: displ = instr.MemoryDisplacement; break;
-					case 8: displ = (ulong)(int)instr.MemoryDisplacement; break;
+					case 4: displ = instr.MemoryDisplacement32; break;
+					case 8: displ = (ulong)(int)instr.MemoryDisplacement64; break;
 					default:
 						Debug.Fail($"Unknown mem displ size: {instr.MemoryDisplSize}");
 						goto case 8;
@@ -235,27 +236,13 @@ namespace JitDasm {
 				var address = kv.Key;
 				var info = kv.Value;
 
-				switch (info.Kind) {
-				case TargetKind.Unknown:
-					info.Name = null;
-					break;
-
-				case TargetKind.Data:
-					info.Name = GetLabel(labelIndex++);
-					break;
-
-				case TargetKind.BlockStart:
-				case TargetKind.Branch:
-					info.Name = GetLabel(labelIndex++);
-					break;
-
-				case TargetKind.Call:
-					info.Name = GetFunc(methodIndex++);
-					break;
-
-				default:
-					throw new InvalidOperationException();
-				}
+				info.Name = info.Kind switch {
+					TargetKind.Unknown => null,
+					TargetKind.Data => GetLabel(labelIndex++),
+					TargetKind.BlockStart or TargetKind.Branch => GetLabel(labelIndex++),
+					TargetKind.Call => GetFunc(methodIndex++),
+					_ => throw new InvalidOperationException(),
+				};
 			}
 
 			foreach (ref var instr in method.Instructions) {
@@ -341,21 +328,12 @@ namespace JitDasm {
 			bufIndex++;
 		}
 
-		static string FormatAddress(int bitness, ulong address, bool upperCaseHex) {
-			switch (bitness) {
-			case 16:
-				return address.ToString(upperCaseHex ? "X4" : "x4");
-
-			case 32:
-				return address.ToString(upperCaseHex ? "X8" : "x8");
-
-			case 64:
-				return address.ToString(upperCaseHex ? "X16" : "x16");
-
-			default:
-				throw new ArgumentOutOfRangeException(nameof(bitness));
-			}
-		}
+		static string FormatAddress(int bitness, ulong address, bool upperCaseHex) => bitness switch {
+			16 => address.ToString(upperCaseHex ? "X4" : "x4"),
+			32 => address.ToString(upperCaseHex ? "X8" : "x8"),
+			64 => address.ToString(upperCaseHex ? "X16" : "x16"),
+			_ => throw new ArgumentOutOfRangeException(nameof(bitness)),
+		};
 
 		bool ISymbolResolver.TryGetSymbol(in Instruction instruction, int operand, int instructionOperand, ulong address, int addressSize, out SymbolResult symbol) {
 			if (targets.TryGetValue(address, out var addrInfo) && !(addrInfo.Name is null)) {
@@ -364,7 +342,7 @@ namespace JitDasm {
 			}
 
 			if (knownSymbols.TryGetSymbol(address, out symbol)) {
-				if (instruction.OpCount == 1 && (instruction.Op0Kind == OpKind.Memory || instruction.Op0Kind == OpKind.Memory64)) {
+				if (instruction.OpCount == 1 && (instruction.Op0Kind == OpKind.Memory/* || instruction.Op0Kind == OpKind.Memory64*/)) {
 					var code = instruction.Code;
 					if (code == Code.Call_rm32 || code == Code.Jmp_rm32)
 						symbol = new SymbolResult(symbol.Address, symbol.Text, symbol.Flags, MemorySize.DwordOffset);
@@ -378,57 +356,27 @@ namespace JitDasm {
 				bool createDiffableSym;
 				var opKind = instruction.GetOpKind(instructionOperand);
 				if (opKind == OpKind.Memory) {
-					long signedAddr;
-					switch (addressSize) {
-					case 0:
-						signedAddr = (long)address;
-						break;
-					case 1:
-						signedAddr = (sbyte)address;
-						break;
-					case 2:
-						signedAddr = (short)address;
-						break;
-					case 4:
-						signedAddr = (int)address;
-						break;
-					case 8:
-						signedAddr = (long)address;
-						break;
-					default:
-						throw new InvalidOperationException();
-					}
+					var signedAddr = addressSize switch {
+						0 => (long)address,
+						1 => (sbyte)address,
+						2 => (short)address,
+						4 => (int)address,
+						8 => (long)address,
+						_ => throw new InvalidOperationException(),
+					};
 					if (signedAddr < 0)
 						signedAddr = -signedAddr;
 					createDiffableSym = IsDiffableSymbolAddress((ulong)signedAddr);
 				}
 				else {
-					switch (instruction.Code) {
-					case Code.Mov_rm32_imm32:
-					case Code.Mov_r32_imm32:
-						createDiffableSym = bitness == 32 && IsDiffableSymbolAddress(address) && instruction.Op0Kind == OpKind.Register;
-						break;
-
-					case Code.Mov_r64_imm64:
-						createDiffableSym = IsDiffableSymbolAddress(address);
-						break;
-
-					default:
-						switch (opKind) {
-						case OpKind.FarBranch16:
-						case OpKind.FarBranch32:
-						case OpKind.NearBranch16:
-						case OpKind.NearBranch32:
-						case OpKind.NearBranch64:
-							createDiffableSym = true;
-							break;
-						default:
-							// eg. 'and eax,12345678'
-							createDiffableSym = false;
-							break;
-						}
-						break;
-					}
+					createDiffableSym = instruction.Code switch {
+						Code.Mov_rm32_imm32 or Code.Mov_r32_imm32 => bitness == 32 && IsDiffableSymbolAddress(address) && instruction.Op0Kind == OpKind.Register,
+						Code.Mov_r64_imm64 => IsDiffableSymbolAddress(address),
+						_ => opKind switch {
+							OpKind.FarBranch16 or OpKind.FarBranch32 or OpKind.NearBranch16 or OpKind.NearBranch32 or OpKind.NearBranch64 => true,
+							_ => false,// eg. 'and eax,12345678'
+						},
+					};
 				}
 				if (createDiffableSym) {
 					symbol = new SymbolResult(address, DIFFABLE_ADDRESS);

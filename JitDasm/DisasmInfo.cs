@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -33,8 +34,8 @@ namespace JitDasm {
 		public readonly string MethodName;
 		public readonly string? ModuleFilename;
 		public readonly ILMap[] ILMap;
-		public readonly List<NativeCode> Code = new List<NativeCode>();
-		public readonly InstructionList Instructions = new InstructionList();
+		public readonly List<NativeCode> Code = new();
+		public readonly InstructionList Instructions = new();
 
 		public DisasmInfo(uint typeToken, string typeFullName, uint methodToken, string methodFullName, string methodName, string? moduleFilename, ILMap[] ilMap) {
 			TypeToken = typeToken;

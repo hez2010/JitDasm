@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -44,7 +45,7 @@ namespace JitDasm {
 				}
 
 				var jitDasmOptions = CommandLineParser.Parse(args);
-				if (!string2.IsNullOrEmpty(jitDasmOptions.LoadModule)) {
+				if (!string.IsNullOrEmpty(jitDasmOptions.LoadModule)) {
 #if DEBUG
 					Console.Error.WriteLine($"Trying to jit methods in module '{jitDasmOptions.LoadModule}' but JitDasm is a debug build, not a release build!");
 #endif
@@ -52,15 +53,14 @@ namespace JitDasm {
 				}
 				var (bitness, methods, knownSymbols) = GetMethodsToDisassemble(jitDasmOptions.Pid, jitDasmOptions.ModuleName, jitDasmOptions.TypeFilter, jitDasmOptions.MethodFilter, jitDasmOptions.HeapSearch);
 				var jobs = GetJobs(methods, jitDasmOptions.OutputDir, jitDasmOptions.FileOutputKind, jitDasmOptions.FilenameFormat, out var baseDir);
-				if (!string2.IsNullOrEmpty(baseDir))
+				if (!string.IsNullOrEmpty(baseDir))
 					Directory.CreateDirectory(baseDir);
 				var sourceDocumentProvider = new SourceDocumentProvider();
 				using (var mdProvider = new MetadataProvider()) {
 					var sourceCodeProvider = new SourceCodeProvider(mdProvider, sourceDocumentProvider);
-					using (var context = new DisasmJobContext(bitness, knownSymbols, sourceCodeProvider, jitDasmOptions.DisassemblerOutputKind, jitDasmOptions.Diffable, jitDasmOptions.ShowAddresses, jitDasmOptions.ShowHexBytes, jitDasmOptions.ShowSourceCode)) {
-						foreach (var job in jobs)
-							Disassemble(context, job);
-					}
+					using var context = new DisasmJobContext(bitness, knownSymbols, sourceCodeProvider, jitDasmOptions.DisassemblerOutputKind, jitDasmOptions.Diffable, jitDasmOptions.ShowAddresses, jitDasmOptions.ShowHexBytes, jitDasmOptions.ShowSourceCode);
+					foreach (var job in jobs)
+						Disassemble(context, job);
 				}
 				return 0;
 			}
@@ -110,19 +110,11 @@ namespace JitDasm {
 					disassemblerOptions |= DisassemblerOptions.ShowHexBytes;
 				if (showSourceCode)
 					disassemblerOptions |= DisassemblerOptions.ShowSourceCode;
-				string commentPrefix;
-				switch (disassemblerOutputKind) {
-				case DisassemblerOutputKind.Masm:
-				case DisassemblerOutputKind.Nasm:
-				case DisassemblerOutputKind.Intel:
-					commentPrefix = "; ";
-					break;
-				case DisassemblerOutputKind.Gas:
-					commentPrefix = "// ";
-					break;
-				default:
-					throw new ArgumentOutOfRangeException(nameof(disassemblerOutputKind));
-				}
+				string commentPrefix = disassemblerOutputKind switch {
+					DisassemblerOutputKind.Masm or DisassemblerOutputKind.Nasm or DisassemblerOutputKind.Intel => "; ",
+					DisassemblerOutputKind.Gas => "// ",
+					_ => throw new ArgumentOutOfRangeException(nameof(disassemblerOutputKind)),
+				};
 				this.sourceCodeProvider = sourceCodeProvider;
 				Disassembler = new Disassembler(bitness, commentPrefix, sourceCodeProvider, knownSymbols, disassemblerOptions);
 				Formatter = CreateFormatter(Disassembler.SymbolResolver, diffable, disassemblerOutputKind);
@@ -155,7 +147,7 @@ namespace JitDasm {
 				throw new ArgumentOutOfRangeException(nameof(disassemblerOutputKind));
 			}
 			formatter.Options.FirstOperandCharIndex = 8;
-			formatter.Options.MemorySizeOptions = MemorySizeOptions.Minimum;
+			formatter.Options.MemorySizeOptions = MemorySizeOptions.Minimal;
 			formatter.Options.ShowBranchSize = !diffable;
 
 			return formatter;
@@ -256,7 +248,7 @@ namespace JitDasm {
 		static string GetTypeName(string fullname) {
 			int index = fullname.LastIndexOfAny(typeSeps);
 			if (index >= 0)
-				fullname = fullname.Substring(index + 1);
+				fullname = fullname[(index + 1)..];
 			return fullname;
 		}
 
@@ -382,9 +374,9 @@ namespace JitDasm {
 							AddSymbol(knownSymbols, runtime, instr.GetImmediate(j), symFlags);
 							break;
 
-						case OpKind.Memory64:
-							AddSymbol(knownSymbols, runtime, instr.MemoryAddress64, symFlags);
-							break;
+						// case OpKind.Memory64:
+						// 	AddSymbol(knownSymbols, runtime, instr.MemoryDisplacement64, symFlags);
+						// 	break;
 
 						case OpKind.Memory:
 							if (instr.IsIPRelativeMemoryOperand)
@@ -393,11 +385,11 @@ namespace JitDasm {
 								switch (instr.MemoryDisplSize) {
 								case 4:
 									if (runtime.PointerSize == 4)
-										AddSymbol(knownSymbols, runtime, instr.MemoryDisplacement, symFlags);
+										AddSymbol(knownSymbols, runtime, instr.MemoryDisplacement32, symFlags);
 									break;
 
 								case 8:
-									AddSymbol(knownSymbols, runtime, (ulong)(int)instr.MemoryDisplacement, symFlags);
+									AddSymbol(knownSymbols, runtime, (ulong)(int)instr.MemoryDisplacement64, symFlags);
 									break;
 								}
 							}
@@ -411,8 +403,8 @@ namespace JitDasm {
 		[Flags]
 		enum AddSymbolFlags {
 			None,
-			CallMem			= 1,
-			CanBeMethod		= 2,
+			CallMem = 1,
+			CanBeMethod = 2,
 		}
 
 		static void AddSymbol(KnownSymbols knownSymbols, ClrRuntime runtime, ulong address, AddSymbolFlags flags) {
@@ -446,7 +438,7 @@ namespace JitDasm {
 				return true;
 			}
 
-			ClrMethod? method = runtime.GetMethodByAddress(address);
+			var method = runtime.GetMethodByAddress(address);
 			if (method is null && (address & ((uint)runtime.PointerSize - 1)) == 0 && (flags & AddSymbolFlags.CallMem) != 0) {
 				if (runtime.ReadPointer(address, out ulong newAddress) && newAddress >= MIN_ADDR)
 					method = runtime.GetMethodByAddress(newAddress);

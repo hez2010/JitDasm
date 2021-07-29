@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -27,8 +28,8 @@ using Iced.Intel;
 
 namespace JitDasm {
 	sealed class KnownSymbols {
-		readonly Dictionary<ulong, SymbolResult> symbols = new Dictionary<ulong, SymbolResult>();
-		readonly HashSet<ulong> noSymbolAddress = new HashSet<ulong>();
+		readonly Dictionary<ulong, SymbolResult> symbols = new();
+		readonly HashSet<ulong> noSymbolAddress = new();
 
 		public void Add(ulong address, SymbolResult symbol) {
 			Debug.Assert(!noSymbolAddress.Contains(address));

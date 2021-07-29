@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -43,8 +44,10 @@ namespace JitDasm {
 		public readonly int End;
 		public int Length => End - Start;
 		public Span(int start, int end) {
-			if (start < 0 || end < 0 || start > end)
-				throw new ArgumentOutOfRangeException();
+			if (start < 0)
+				throw new ArgumentOutOfRangeException(nameof(start));
+			if (end < 0 || start > end)
+				throw new ArgumentOutOfRangeException(nameof(end));
 			Start = start;
 			End = end;
 		}

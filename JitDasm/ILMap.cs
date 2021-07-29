@@ -30,7 +30,7 @@ namespace JitDasm {
 
 	enum IlToNativeMappingTypes {
 		NO_MAPPING = -1,
-		PROLOG     = -2,
-		EPILOG     = -3
+		PROLOG = -2,
+		EPILOG = -3
 	}
 }

@@ -1,4 +1,6 @@
 .vs/
+.vscode/
+.ionide/
 bin/
 obj/
 *.user

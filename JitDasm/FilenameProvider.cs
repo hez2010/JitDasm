@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -45,24 +46,12 @@ namespace JitDasm {
 		}
 
 		public string GetFilename(uint token, string name) {
-			string candidate;
-			switch (filenameFormat) {
-			case FilenameFormat.MemberName:
-				candidate = name;
-				break;
-
-			case FilenameFormat.TokenMemberName:
-				candidate = token.ToString("X8") + "_" + name;
-				break;
-
-			case FilenameFormat.Token:
-				candidate = token.ToString("X8");
-				break;
-
-			default:
-				throw new ArgumentOutOfRangeException(nameof(filenameFormat));
-			}
-
+			string candidate = filenameFormat switch {
+				FilenameFormat.MemberName => name,
+				FilenameFormat.TokenMemberName => token.ToString("X8") + "_" + name,
+				FilenameFormat.Token => token.ToString("X8"),
+				_ => throw new InvalidOperationException($"Invalid filename format: {filenameFormat}"),
+			};
 			if (candidate == string.Empty)
 				candidate = "<UNKNOWN>";
 			candidate = ReplaceInvalidFilenameChars(candidate);

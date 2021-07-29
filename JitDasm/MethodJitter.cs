@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -42,7 +43,7 @@ namespace JitDasm {
 			var paths = new List<string>();
 			var modulePath = Path.GetDirectoryName(Path.GetFullPath(module));
 			if (modulePath is null)
-				throw new ArgumentException(nameof(module));
+				throw new ArgumentNullException(nameof(module));
 			paths.Add(modulePath);
 			foreach (var path in searchPaths) {
 				if (Directory.Exists(path))
@@ -50,13 +51,7 @@ namespace JitDasm {
 			}
 			this.searchPaths = paths.ToArray();
 			nameToAssembly = new Dictionary<string, Assembly?>();
-#if NETCOREAPP
 			System.Runtime.Loader.AssemblyLoadContext.Default.Resolving += AssemblyLoadContext_Resolving;
-#elif NETFRAMEWORK
-			AppDomain.CurrentDomain.AssemblyResolve += AppDomain_AssemblyResolve;
-#else
-#error Unknown target framework
-#endif
 
 			var asm = Assembly.LoadFile(module);
 			var allTypes = GetTypes(asm).ToArray();
@@ -83,11 +78,9 @@ namespace JitDasm {
 						continue;
 					if (!methodFilter.IsMatch(method.Name, (uint)method.MetadataToken))
 						continue;
-#if NETCOREAPP
 					// Not supported on .NET Core
 					if (isDelegate && method is MethodInfo m && m.IsVirtual && (m.Name == "BeginInvoke" || m.Name == "EndInvoke"))
 						continue;
-#endif
 					try {
 						RuntimeHelpers.PrepareMethod(method.MethodHandle);
 					}
@@ -107,7 +100,7 @@ namespace JitDasm {
 
 		// clrmd doesn't show the generic tick, eg. List`1 is shown as List
 		static string MakeClrmdTypeName(string name) {
-			if (name.Length > 0 && char.IsDigit(name[name.Length - 1])) {
+			if (name.Length > 0 && char.IsDigit(name[^1])) {
 				int index = name.LastIndexOf('`');
 				if (index >= 0)
 					return name.Substring(0, index);
@@ -139,13 +132,8 @@ namespace JitDasm {
 			}
 		}
 
-#if NETCOREAPP
 		Assembly? AssemblyLoadContext_Resolving(System.Runtime.Loader.AssemblyLoadContext context, AssemblyName name) => ResolveAssembly(name.Name);
-#elif NETFRAMEWORK
-		Assembly? AppDomain_AssemblyResolve(object? sender, ResolveEventArgs e) => ResolveAssembly(new AssemblyName(e.Name).Name);
-#else
-#error Unknown target framework
-#endif
+
 
 		Assembly? ResolveAssembly(string? name) {
 			if (name is null)
@@ -178,17 +166,11 @@ namespace JitDasm {
 		}
 
 		public static void JitMethods(string module, MemberFilter typeFilter, MemberFilter methodFilter, bool runClassConstructors, IEnumerable<string> searchPaths) {
-			using (var loader = new MethodJitter(module, typeFilter, methodFilter, runClassConstructors, searchPaths)) { }
+			using var loader = new MethodJitter(module, typeFilter, methodFilter, runClassConstructors, searchPaths);
 		}
 
-		void IDisposable.Dispose() {
-#if NETCOREAPP
+		void IDisposable.Dispose() =>
 			System.Runtime.Loader.AssemblyLoadContext.Default.Resolving -= AssemblyLoadContext_Resolving;
-#elif NETFRAMEWORK
-			AppDomain.CurrentDomain.AssemblyResolve -= AppDomain_AssemblyResolve;
-#else
-#error Unknown target framework
-#endif
-		}
+
 	}
 }

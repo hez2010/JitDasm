@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -55,8 +56,8 @@ namespace JitDasm {
 					if (!int.TryParse(next, out options.Pid))
 						throw new CommandLineParserException($"Invalid pid: {next}");
 					try {
-						using (var process = Process.GetProcessById(options.Pid))
-							VerifyProcess(process);
+						using var process = Process.GetProcessById(options.Pid);
+						VerifyProcess(process);
 					}
 					catch (ArgumentException) {
 						throw new CommandLineParserException($"Process does not exist, pid = {options.Pid}");
@@ -143,19 +144,12 @@ namespace JitDasm {
 				case "--filename-format":
 					if (next is null)
 						throw new CommandLineParserException("Missing filename format");
-					switch (next) {
-					case "name":
-						options.FilenameFormat = FilenameFormat.MemberName;
-						break;
-					case "tokname":
-						options.FilenameFormat = FilenameFormat.TokenMemberName;
-						break;
-					case "token":
-						options.FilenameFormat = FilenameFormat.Token;
-						break;
-					default:
-						throw new CommandLineParserException($"Unknown filename format: {next}");
-					}
+					options.FilenameFormat = next switch {
+						"name" => FilenameFormat.MemberName,
+						"tokname" => FilenameFormat.TokenMemberName,
+						"token" => FilenameFormat.Token,
+						_ => throw new CommandLineParserException($"Unknown filename format: {next}"),
+					};
 					i++;
 					break;
 
@@ -163,22 +157,13 @@ namespace JitDasm {
 				case "--file":
 					if (next is null)
 						throw new CommandLineParserException("Missing filename kind");
-					switch (next) {
-					case "stdout":
-						options.FileOutputKind = FileOutputKind.Stdout;
-						break;
-					case "file":
-						options.FileOutputKind = FileOutputKind.OneFile;
-						break;
-					case "type":
-						options.FileOutputKind = FileOutputKind.OneFilePerType;
-						break;
-					case "method":
-						options.FileOutputKind = FileOutputKind.OneFilePerMethod;
-						break;
-					default:
-						throw new CommandLineParserException($"Unknown filename kind: {next}");
-					}
+					options.FileOutputKind = next switch {
+						"stdout" => FileOutputKind.Stdout,
+						"file" => FileOutputKind.OneFile,
+						"type" => FileOutputKind.OneFilePerType,
+						"method" => FileOutputKind.OneFilePerMethod,
+						_ => throw new CommandLineParserException($"Unknown filename kind: {next}"),
+					};
 					i++;
 					break;
 
@@ -186,23 +171,13 @@ namespace JitDasm {
 				case "--disasm":
 					if (next is null)
 						throw new CommandLineParserException("Missing disassembler kind");
-					switch (next) {
-					case "masm":
-						options.DisassemblerOutputKind = DisassemblerOutputKind.Masm;
-						break;
-					case "nasm":
-						options.DisassemblerOutputKind = DisassemblerOutputKind.Nasm;
-						break;
-					case "gas":
-					case "att":
-						options.DisassemblerOutputKind = DisassemblerOutputKind.Gas;
-						break;
-					case "intel":
-						options.DisassemblerOutputKind = DisassemblerOutputKind.Intel;
-						break;
-					default:
-						throw new CommandLineParserException($"Unknown disassembler kind: {next}");
-					}
+					options.DisassemblerOutputKind = next switch {
+						"masm" => DisassemblerOutputKind.Masm,
+						"nasm" => DisassemblerOutputKind.Nasm,
+						"gas" or "att" => DisassemblerOutputKind.Gas,
+						"intel" => DisassemblerOutputKind.Intel,
+						_ => throw new CommandLineParserException($"Unknown disassembler kind: {next}"),
+					};
 					i++;
 					break;
 
@@ -267,7 +242,7 @@ namespace JitDasm {
 				}
 			}
 
-			if (!string2.IsNullOrEmpty(options.LoadModule)) {
+			if (!string.IsNullOrEmpty(options.LoadModule)) {
 				using (var process = Process.GetCurrentProcess())
 					options.Pid = process.Id;
 				options.ModuleName = options.LoadModule;
@@ -287,7 +262,7 @@ namespace JitDasm {
 			int index = value.IndexOf('-');
 			if (index >= 0) {
 				var lo = value.Substring(0, index);
-				var hi = value.Substring(index + 1);
+				var hi = value[(index + 1)..];
 				if (TryParseToken(lo, out tokenLo) && TryParseToken(hi, out tokenHi))
 					return true;
 			}
@@ -305,7 +280,7 @@ namespace JitDasm {
 
 		static bool TryParseToken(string value, out uint token) {
 			if (value.StartsWith("0x", StringComparison.OrdinalIgnoreCase)) {
-				if (uint.TryParse(value.Substring(2), System.Globalization.NumberStyles.HexNumber, null, out token))
+				if (uint.TryParse(value[2..], System.Globalization.NumberStyles.HexNumber, null, out token))
 					return true;
 			}
 			token = 0;

@@ -2,26 +2,21 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <TargetFrameworks>netcoreapp3.1;netcoreapp2.1</TargetFrameworks>
-    <!-- It's not possible to target .NET Framework 4.7.2 when using dotnet pack
-         together with packaging as a tool -->
-    <NoTargetFrameworkNet472 Condition=" '$(PACKING)' == 'true' ">true</NoTargetFrameworkNet472>
-    <TargetFrameworks Condition=" '$(NoTargetFrameworkNet472)' != 'true' ">$(TargetFrameworks);net472</TargetFrameworks>
-    <LangVersion>8.0</LangVersion>
+    <TargetFrameworks>net5.0</TargetFrameworks>
     <nullable>enable</nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <Features>strict</Features>
     <PackAsTool>true</PackAsTool>
     <ToolCommandName>jitdasm</ToolCommandName>
-    <VersionPrefix>1.0.1</VersionPrefix>
+    <VersionPrefix>1.1.0</VersionPrefix>
     <Description>Disassembles one or more .NET methods / types to stdout or file(s). It can also create diffable disassembly.</Description>
     <Title>$(Description)</Title>
-    <Authors>0xd4d</Authors>
+    <Authors>0xd4d;hez2010</Authors>
     <!-- name is too similar to an unlisted package jit-dasm from 2016. Yeah, that's going to confuse everyone, NuGet! -->
-    <PackageId>JitDasm.0xd4d</PackageId>
-    <PackageProjectUrl>https://github.com/0xd4d/JitDasm</PackageProjectUrl>
+    <PackageId>JitDasm.hez2010</PackageId>
+    <PackageProjectUrl>https://github.com/hez2010/JitDasm</PackageProjectUrl>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/0xd4d/JitDasm</RepositoryUrl>
+    <RepositoryUrl>https://github.com/hez2010/JitDasm</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>jit;disassembly;disassembler;.net;dotnet;coreclr;clr</PackageTags>
     <PublishRepositoryUrl>true</PublishRepositoryUrl>
@@ -31,10 +26,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="dnlib" Version="3.3.2" />
-    <PackageReference Include="Iced" Version="1.9.0" />
+    <PackageReference Include="dnlib" Version="3.3.3" />
+    <PackageReference Include="Iced" Version="1.13.0" />
     <PackageReference Include="Microsoft.Diagnostics.Runtime" Version="1.1.142101" />
-    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.0" PrivateAssets="All" />
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies" Version="1.0.2" PrivateAssets="All" />
     <PackageReference Include="Microsoft.SourceLink.GitHub" Version="1.0.0" PrivateAssets="All" />
   </ItemGroup>
 

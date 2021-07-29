@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -50,10 +51,10 @@ namespace JitDasm {
 		public string ModuleName = string.Empty;
 		public string? LoadModule;
 		public string OutputDir = string.Empty;
-		public readonly List<string> AssemblySearchPaths = new List<string>();
+		public readonly List<string> AssemblySearchPaths = new();
 
-		public readonly MemberFilter TypeFilter = new MemberFilter();
-		public readonly MemberFilter MethodFilter = new MemberFilter();
+		public readonly MemberFilter TypeFilter = new();
+		public readonly MemberFilter MethodFilter = new();
 		public bool Diffable = false;
 		public bool ShowAddresses = true;
 		public bool ShowHexBytes = true;
@@ -66,7 +67,7 @@ namespace JitDasm {
 	}
 
 	sealed class TokensFilter {
-		readonly List<(uint lo, uint hi)> tokens = new List<(uint lo, uint hi)>();
+		readonly List<(uint lo, uint hi)> tokens = new();
 		public bool HasTokens => tokens.Count != 0;
 		public void Add(uint lo, uint hi) => tokens.Add((lo, hi));
 		public bool IsMatch(uint token) {
@@ -79,10 +80,10 @@ namespace JitDasm {
 	}
 
 	sealed class MemberFilter {
-		public readonly RegexFilter NameFilter = new RegexFilter();
-		public readonly TokensFilter TokensFilter = new TokensFilter();
-		public readonly RegexFilter ExcludeNameFilter = new RegexFilter();
-		public readonly TokensFilter ExcludeTokensFilter = new TokensFilter();
+		public readonly RegexFilter NameFilter = new();
+		public readonly TokensFilter TokensFilter = new();
+		public readonly RegexFilter ExcludeNameFilter = new();
+		public readonly TokensFilter ExcludeTokensFilter = new();
 
 		public bool IsMatch(string name, uint token) {
 			if (TokensFilter.HasTokens || NameFilter.HasFilters) {
@@ -106,7 +107,7 @@ namespace JitDasm {
 	}
 
 	sealed class RegexFilter {
-		readonly List<Regex> regexes = new List<Regex>();
+		readonly List<Regex> regexes = new();
 		public bool HasFilters => regexes.Count != 0;
 		public bool IsMatch(string value) {
 			foreach (var regex in regexes) {

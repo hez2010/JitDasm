@@ -1,5 +1,6 @@
 /*
 Copyright (C) 2019 de4dot@gmail.com
+Copyright (C) 2021 hez2010@outlook.com
 
 Permission is hereby granted, free of charge, to any person obtaining
 a copy of this software and associated documentation files (the
@@ -36,7 +37,7 @@ namespace JitDasm {
 		}
 
 		public ModuleDef? GetModule(string? filename) {
-			if (string2.IsNullOrEmpty(filename))
+			if (string.IsNullOrEmpty(filename))
 				return null;
 			lock (lockObj) {
 				foreach (var module in modules) {
