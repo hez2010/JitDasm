@@ -24,6 +24,7 @@ SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 using System;
 using System.Collections.Generic;
+using System.Collections.Immutable;
 using System.IO;
 using System.Linq;
 using Iced.Intel;
@@ -210,7 +211,7 @@ namespace JitDasm {
 					throw new ApplicationException("Missing output dir");
 				baseDir = outputDir;
 				filenameProvider = new FilenameProvider(filenameFormat, baseDir, DASM_EXT);
-				var types = new Dictionary<uint, List<DisasmInfo>>();
+				var types = new Dictionary<int, List<DisasmInfo>>();
 				foreach (var method in methods) {
 					if (!types.TryGetValue(method.TypeToken, out var typeMethods))
 						types.Add(method.TypeToken, typeMethods = new List<DisasmInfo>());
@@ -219,7 +220,7 @@ namespace JitDasm {
 				var allTypes = new List<List<DisasmInfo>>(types.Values);
 				allTypes.Sort((a, b) => StringComparer.Ordinal.Compare(a[0].TypeFullName, b[0].TypeFullName));
 				foreach (var typeMethods in allTypes) {
-					uint token = typeMethods[0].TypeToken;
+					int token = typeMethods[0].TypeToken;
 					var name = GetTypeName(typeMethods[0].TypeFullName);
 					var getTextWriter = CreateGetTextWriter(filenameProvider.GetFilename(token, name));
 					jobs.Add(new DisasmJob(getTextWriter, typeMethods.ToArray()));
@@ -232,7 +233,7 @@ namespace JitDasm {
 				baseDir = outputDir;
 				filenameProvider = new FilenameProvider(filenameFormat, baseDir, DASM_EXT);
 				foreach (var method in methods) {
-					uint token = method.MethodToken;
+					int token = method.MethodToken;
 					var name = method.MethodName.Replace('.', '_');
 					var getTextWriter = CreateGetTextWriter(filenameProvider.GetFilename(token, name));
 					jobs.Add(new DisasmJob(getTextWriter, new[] { method }));
@@ -259,28 +260,28 @@ namespace JitDasm {
 			var methods = new List<DisasmInfo>();
 			var knownSymbols = new KnownSymbols();
 			int bitness;
-			using (var dataTarget = DataTarget.AttachToProcess(pid, 0, AttachFlag.Passive)) {
-				if (dataTarget.ClrVersions.Count == 0)
+			using (var dataTarget = DataTarget.AttachToProcess(pid, false)) {
+				if (dataTarget.ClrVersions.Length == 0)
 					throw new ApplicationException("Couldn't find CLR/CoreCLR");
-				if (dataTarget.ClrVersions.Count > 1)
+				if (dataTarget.ClrVersions.Length > 1)
 					throw new ApplicationException("Found more than one CLR/CoreCLR");
 				var clrInfo = dataTarget.ClrVersions[0];
-				var clrRuntime = clrInfo.CreateRuntime(clrInfo.LocalMatchingDac);
-				bitness = clrRuntime.PointerSize * 8;
+				var clrRuntime = clrInfo.CreateRuntime();
+				bitness = dataTarget.DataReader.PointerSize * 8;
 
-				// Per https://github.com/microsoft/clrmd/issues/303
-				dataTarget.DataReader.Flush();
+				// // Per https://github.com/microsoft/clrmd/issues/303
+				// dataTarget.DataReader.FlushCachedData();
 
-				var module = clrRuntime.Modules.FirstOrDefault(a =>
+				var module = clrRuntime.EnumerateModules().FirstOrDefault(a =>
 					StringComparer.OrdinalIgnoreCase.Equals(a.Name, moduleName) ||
 					StringComparer.OrdinalIgnoreCase.Equals(Path.GetFileNameWithoutExtension(a.Name), moduleName) ||
-					StringComparer.OrdinalIgnoreCase.Equals(a.FileName, moduleName));
+					StringComparer.OrdinalIgnoreCase.Equals(a.AssemblyName, moduleName));
 				if (module is null)
 					throw new ApplicationException($"Couldn't find module '{moduleName}'");
 
-				module.Runtime.Flush();
+				// module.Runtime.Flush();
 
-				foreach (var type in EnumerateTypes(module, heapSearch)) {
+				foreach (var type in EnumerateTypes(module, clrRuntime, heapSearch)) {
 					if (!typeFilter.IsMatch(type.Name, type.MetadataToken))
 						continue;
 					foreach (var method in type.Methods) {
@@ -301,20 +302,50 @@ namespace JitDasm {
 
 		static bool IsSameType(ClrType a, ClrType b) => a.Module == b.Module && a.MetadataToken == b.MetadataToken;
 
-		static IEnumerable<ClrType> EnumerateTypes(ClrModule module, bool heapSearch) {
+		static IEnumerable<ClrType> EnumerateTypes(ClrModule module, ClrRuntime runtime, bool heapSearch) {
 			var types = new HashSet<ClrType>();
-			foreach (var type in EnumerateTypesCore(module, heapSearch)) {
+			foreach (var type in EnumerateTypesCore(module, runtime, heapSearch)) {
 				if (types.Add(type))
 					yield return type;
 			}
 		}
 
-		static IEnumerable<ClrType> EnumerateTypesCore(ClrModule module, bool heapSearch) {
-			foreach (var type in module.EnumerateTypes())
+ 		/// <summary>
+        /// Enumerates types with constructed method tables in all modules.
+        /// </summary>
+        /// <param name="heap"></param>
+        /// <returns></returns>
+        public static IEnumerable<ClrType> EnumerateTypes(this ClrHeap heap)
+        {
+            if (heap is null)
+                throw new ArgumentNullException(nameof(heap));
+
+            // The ClrHeap actually doesn't know anything about 'types' in the strictest sense, that's
+            // all tracked by the runtime.  First, grab the runtime object:
+
+            var runtime = heap.Runtime;
+
+            // Now we loop through every module and grab every constructed MethodTable
+            foreach (var module in runtime.EnumerateModules())
+            {
+                foreach ((ulong mt, int _) in  module.EnumerateTypeDefToMethodTableMap())
+                {
+                    // Now try to construct a type for mt.  This may fail if the type was only partially
+                    // loaded, dump inconsistency, and in some odd corner cases like transparent proxies:
+                    var type = runtime.GetTypeByMethodTable(mt);
+
+                    if (type != null)
+                        yield return type;
+                }
+            }
+        }
+
+		static IEnumerable<ClrType> EnumerateTypesCore(ClrModule module, ClrRuntime runtime, bool heapSearch) {
+			foreach (var type in runtime.Heap.EnumerateTypes())
 				yield return type;
 
 			if (heapSearch) {
-				foreach (var obj in module.Runtime.Heap.EnumerateObjects()) {
+				foreach (var obj in runtime.Heap.EnumerateObjects()) {
 					var type = obj.Type;
 					if (type?.Module == module)
 						yield return type;
@@ -325,10 +356,12 @@ namespace JitDasm {
 		// Decode everything on one thread to get possible symbol values. Could be sped up of we use parallel for
 		// then on the main thread, we use CLRMD (not thread safe), and then parallel for to disassemble them.
 		static void DecodeInstructions(KnownSymbols knownSymbols, ClrRuntime runtime, DisasmInfo disasmInfo) {
+			if (runtime.DataTarget is null) throw new NullReferenceException(nameof(runtime.DataTarget));
+			var pointerSize = runtime.DataTarget.DataReader.PointerSize;
 			var instrs = disasmInfo.Instructions;
 			foreach (var info in disasmInfo.Code) {
 				var reader = new ByteArrayCodeReader(info.Code);
-				var decoder = Decoder.Create(runtime.PointerSize * 8, reader);
+				var decoder = Decoder.Create(pointerSize * 8, reader);
 				decoder.IP = info.IP;
 				while (reader.CanReadByte) {
 					ref var instr = ref instrs.AllocUninitializedElement();
@@ -358,7 +391,7 @@ namespace JitDasm {
 							break;
 
 						case OpKind.Immediate32:
-							if (runtime.PointerSize == 4)
+							if (pointerSize == 4)
 								AddSymbol(knownSymbols, runtime, instr.GetImmediate(j), symFlags | AddSymbolFlags.CanBeMethod);
 							break;
 
@@ -384,7 +417,7 @@ namespace JitDasm {
 							else {
 								switch (instr.MemoryDisplSize) {
 								case 4:
-									if (runtime.PointerSize == 4)
+									if (pointerSize == 4)
 										AddSymbol(knownSymbols, runtime, instr.MemoryDisplacement32, symFlags);
 									break;
 
@@ -424,7 +457,9 @@ namespace JitDasm {
 				return false;
 			}
 
-			string name;
+			if (runtime.DataTarget is null) throw new NullReferenceException(nameof(runtime.DataTarget));
+
+			string? name;
 
 			name = runtime.GetJitHelperFunctionName(address);
 			if (!(name is null)) {
@@ -432,16 +467,16 @@ namespace JitDasm {
 				return true;
 			}
 
-			name = runtime.GetMethodTableName(address);
+			name = runtime.DacLibrary.SOSDacInterface.GetMethodTableName(address);
 			if (!(name is null)) {
 				result = new SymbolResult(address, "methodtable(" + name + ")", FormatterTextKind.Data);
 				return true;
 			}
 
-			var method = runtime.GetMethodByAddress(address);
-			if (method is null && (address & ((uint)runtime.PointerSize - 1)) == 0 && (flags & AddSymbolFlags.CallMem) != 0) {
-				if (runtime.ReadPointer(address, out ulong newAddress) && newAddress >= MIN_ADDR)
-					method = runtime.GetMethodByAddress(newAddress);
+			var method = runtime.GetMethodByInstructionPointer(address);
+			if (method is null && (address & ((uint)runtime.DataTarget.DataReader.PointerSize - 1)) == 0 && (flags & AddSymbolFlags.CallMem) != 0) {
+				if (runtime.DataTarget.DataReader.ReadPointer(address, out ulong newAddress) && newAddress >= MIN_ADDR)
+					method = runtime.GetMethodByInstructionPointer(newAddress);
 			}
 			if (!(method is null) && (flags & AddSymbolFlags.CanBeMethod) == 0) {
 				// There can be data at the end of the method, after the code. Don't return a method symbol.
@@ -461,7 +496,7 @@ namespace JitDasm {
 		}
 
 		static DisasmInfo CreateDisasmInfo(DataTarget dataTarget, ClrMethod method) {
-			var info = new DisasmInfo(method.Type.MetadataToken, method.Type.Name, method.MetadataToken, method.ToString() ?? "???", method.Name, method.Type.Module.IsFile ? method.Type.Module.FileName : null, CreateILMap(method.ILOffsetMap));
+			var info = new DisasmInfo(method.Type.MetadataToken, method.Type.Name ?? "", method.MetadataToken, method.ToString() ?? "???", method.Name ?? "", null, CreateILMap(method.ILOffsetMap.ToArray()));
 			var codeInfo = method.HotColdInfo;
 			ReadCode(dataTarget, info, codeInfo.HotStart, codeInfo.HotSize);
 			ReadCode(dataTarget, info, codeInfo.ColdStart, codeInfo.ColdSize);
@@ -492,7 +527,7 @@ namespace JitDasm {
 			if (startAddr == 0 || size == 0)
 				return;
 			var code = new byte[(int)size];
-			if (!dataTarget.ReadProcessMemory(startAddr, code, code.Length, out int bytesRead) || bytesRead != code.Length)
+			if (dataTarget.DataReader.Read(startAddr, code) != code.Length)
 				throw new ApplicationException($"Couldn't read process memory @ 0x{startAddr:X}");
 			info.Code.Add(new NativeCode(startAddr, code));
 		}

@@ -70,7 +70,7 @@ namespace JitDasm {
 		readonly List<(uint lo, uint hi)> tokens = new();
 		public bool HasTokens => tokens.Count != 0;
 		public void Add(uint lo, uint hi) => tokens.Add((lo, hi));
-		public bool IsMatch(uint token) {
+		public bool IsMatch(int token) {
 			foreach (var (lo, hi) in tokens) {
 				if (lo <= token && token <= hi)
 					return true;
@@ -85,7 +85,7 @@ namespace JitDasm {
 		public readonly RegexFilter ExcludeNameFilter = new();
 		public readonly TokensFilter ExcludeTokensFilter = new();
 
-		public bool IsMatch(string name, uint token) {
+		public bool IsMatch(string? name, int token) {
 			if (TokensFilter.HasTokens || NameFilter.HasFilters) {
 				bool match =
 					(TokensFilter.HasTokens && TokensFilter.IsMatch(token)) ||
@@ -109,7 +109,8 @@ namespace JitDasm {
 	sealed class RegexFilter {
 		readonly List<Regex> regexes = new();
 		public bool HasFilters => regexes.Count != 0;
-		public bool IsMatch(string value) {
+		public bool IsMatch(string? value) {
+			if (value is null) return false;
 			foreach (var regex in regexes) {
 				if (regex.IsMatch(value))
 					return true;
