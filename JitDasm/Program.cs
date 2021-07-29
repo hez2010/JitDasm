@@ -260,7 +260,7 @@ namespace JitDasm {
 			var methods = new List<DisasmInfo>();
 			var knownSymbols = new KnownSymbols();
 			int bitness;
-			using (var dataTarget = DataTarget.AttachToProcess(pid, false)) {
+			using (var dataTarget = DataTarget.AttachToProcess(pid, true)) {
 				if (dataTarget.ClrVersions.Length == 0)
 					throw new ApplicationException("Couldn't find CLR/CoreCLR");
 				if (dataTarget.ClrVersions.Length > 1)
@@ -269,9 +269,6 @@ namespace JitDasm {
 				var clrRuntime = clrInfo.CreateRuntime();
 				bitness = dataTarget.DataReader.PointerSize * 8;
 
-				// // Per https://github.com/microsoft/clrmd/issues/303
-				// dataTarget.DataReader.FlushCachedData();
-
 				var module = clrRuntime.EnumerateModules().FirstOrDefault(a =>
 					StringComparer.OrdinalIgnoreCase.Equals(a.Name, moduleName) ||
 					StringComparer.OrdinalIgnoreCase.Equals(Path.GetFileNameWithoutExtension(a.Name), moduleName) ||
@@ -279,9 +276,9 @@ namespace JitDasm {
 				if (module is null)
 					throw new ApplicationException($"Couldn't find module '{moduleName}'");
 
-				// module.Runtime.Flush();
+				module.AppDomain.Runtime.FlushCachedData();
 
-				foreach (var type in EnumerateTypes(module, clrRuntime, heapSearch)) {
+				foreach (var type in EnumerateTypes(module, heapSearch)) {
 					if (!typeFilter.IsMatch(type.Name, type.MetadataToken))
 						continue;
 					foreach (var method in type.Methods) {
@@ -302,9 +299,9 @@ namespace JitDasm {
 
 		static bool IsSameType(ClrType a, ClrType b) => a.Module == b.Module && a.MetadataToken == b.MetadataToken;
 
-		static IEnumerable<ClrType> EnumerateTypes(ClrModule module, ClrRuntime runtime, bool heapSearch) {
+		static IEnumerable<ClrType> EnumerateTypes(ClrModule module, bool heapSearch) {
 			var types = new HashSet<ClrType>();
-			foreach (var type in EnumerateTypesCore(module, runtime, heapSearch)) {
+			foreach (var type in EnumerateTypesCore(module, heapSearch)) {
 				if (types.Add(type))
 					yield return type;
 			}
@@ -340,7 +337,8 @@ namespace JitDasm {
             }
         }
 
-		static IEnumerable<ClrType> EnumerateTypesCore(ClrModule module, ClrRuntime runtime, bool heapSearch) {
+		static IEnumerable<ClrType> EnumerateTypesCore(ClrModule module, bool heapSearch) {
+			var runtime = module.AppDomain.Runtime;
 			foreach (var type in runtime.Heap.EnumerateTypes())
 				yield return type;
 
@@ -496,7 +494,7 @@ namespace JitDasm {
 		}
 
 		static DisasmInfo CreateDisasmInfo(DataTarget dataTarget, ClrMethod method) {
-			var info = new DisasmInfo(method.Type.MetadataToken, method.Type.Name ?? "", method.MetadataToken, method.ToString() ?? "???", method.Name ?? "", null, CreateILMap(method.ILOffsetMap.ToArray()));
+			var info = new DisasmInfo(method.Type.MetadataToken, method.Type.Name ?? "", method.MetadataToken, method.ToString() ?? "???", method.Name ?? "", method.Type.Module?.AssemblyName, CreateILMap(method.ILOffsetMap.ToArray()));
 			var codeInfo = method.HotColdInfo;
 			ReadCode(dataTarget, info, codeInfo.HotStart, codeInfo.HotSize);
 			ReadCode(dataTarget, info, codeInfo.ColdStart, codeInfo.ColdSize);
