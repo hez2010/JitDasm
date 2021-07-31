@@ -2,13 +2,7 @@
 
 Disassembles one or more .NET methods / types to stdout or file(s). It can also create diffable disassembly.
 
-# .NET global tool
-
-It's available as a [.NET global tool](https://www.nuget.org/packages/JitDasm.0xd4d/)
-
-```cmd
-dotnet tool install -g JitDasm.0xd4d
-```
+This continues [0xd4d](https://github.com/0xd4d)'s work.
 
 # Tips
 
